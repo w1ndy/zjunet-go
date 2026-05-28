@@ -1,0 +1,114 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: zjunet-go
+
+builds:
+  - id: zjunet-go
+    main: ./cmd/zjunet-go
+    binary: zjunet-go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w -X github.com/w1ndy/zjunet-go/pkg/cli.Version={{ .Version }}
+
+archives:
+  - id: linux-binaries
+    ids:
+      - zjunet-go
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - README.md
+      - config.example.json
+      - packaging/systemd/zjunet-go.service
+
+nfpms:
+  - id: linux-packages
+    package_name: zjunet-go
+    ids:
+      - zjunet-go
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: w1ndy
+    homepage: https://github.com/w1ndy/zjunet-go
+    maintainer: Di Weng <652068+w1ndy@users.noreply.github.com>
+    description: |-
+      Go VPN client for Zhejiang University Campus Network on Linux.
+    license: GPL-3.0-only
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: net
+    priority: optional
+    contents:
+      - dst: /etc/zjunet-go
+        type: dir
+        file_info:
+          mode: 0700
+          owner: root
+          group: root
+      - src: packaging/systemd/zjunet-go.service
+        dst: /usr/lib/systemd/system/zjunet-go.service
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
+      - src: README.md
+        dst: /usr/share/doc/zjunet-go/README.md
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
+      - src: config.example.json
+        dst: /usr/share/doc/zjunet-go/config.example.json
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
+    scripts:
+      postinstall: packaging/scripts/postinstall.sh
+      preremove: packaging/scripts/preremove.sh
+      postremove: packaging/scripts/postremove.sh
+    overrides:
+      deb:
+        dependencies:
+          - xl2tpd
+          - ppp
+          - iproute2
+          - procps
+          - systemd
+          - iptables
+      rpm:
+        dependencies:
+          - xl2tpd
+          - ppp
+          - iproute
+          - procps-ng
+          - systemd
+          - iptables
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  mode: keep-existing
+  replace_existing_artifacts: true
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

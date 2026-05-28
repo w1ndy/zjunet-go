@@ -21,6 +21,7 @@ load balancing.
 go test ./...
 go build -o zjunet-go ./cmd/zjunet-go
 gofmt -w cmd pkg
+goreleaser check
 ```
 
 Use package-level tests while iterating on a focused change, for example:
@@ -39,6 +40,10 @@ go test ./pkg/l2tp
 - `pkg/l2tp`: `xl2tpd`, `pppd`, PPP detection, and service control.
 - `pkg/route`: route, DNS, runtime state, and NAT management.
 - `pkg/system`: root checks, dependency checks, command helpers, and atomic writes.
+- `packaging/systemd`: packaged systemd unit files.
+- `packaging/scripts`: package maintainer scripts used by GoReleaser/nFPM.
+- `.github/workflows/release.yml`: release workflow for binaries and packages.
+- `.goreleaser.yaml`: GoReleaser build, archive, and nFPM package config.
 
 ## Coding Guidelines
 
@@ -55,6 +60,8 @@ go test ./pkg/l2tp
 - Do not commit real NetID credentials, generated local config files, logs, or
   host-specific route/firewall output.
 - Run `gofmt` before finishing Go code changes.
+- Keep Debian and RPM dependency names in `.goreleaser.yaml` format-specific
+  overrides when package names differ across distributions.
 
 ## Testing Notes
 
@@ -64,3 +71,11 @@ lookups; follow that pattern for new tests.
 
 Only run `sudo zjunet-go start` manually on a Linux host where modifying
 `xl2tpd`, PPP, DNS, routes, and optional `iptables` state is expected.
+
+## Release Notes
+
+Release packaging is driven by GoReleaser v2 through GitHub Actions on the
+`release.published` event. The nFPM package definition installs the systemd
+unit, creates `/etc/zjunet-go`, and ships the example config under
+`/usr/share/doc/zjunet-go` instead of creating a live config with placeholder
+credentials.

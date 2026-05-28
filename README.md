@@ -43,6 +43,28 @@ Install the binary somewhere root-managed if you plan to run it through
 sudo install -m 755 zjunet-go /usr/local/bin/zjunet-go
 ```
 
+## Packages
+
+Release artifacts include `.deb` and `.rpm` packages for Linux. The packages
+install:
+
+- `/usr/bin/zjunet-go`
+- `/usr/lib/systemd/system/zjunet-go.service`
+- `/etc/zjunet-go/`
+- `/usr/share/doc/zjunet-go/config.example.json`
+
+Package metadata declares the runtime dependencies needed by the daemon,
+including `xl2tpd`, `ppp`, `iproute2`/`iproute`, `procps`/`procps-ng`,
+`systemd`, and `iptables`.
+
+The package does not install a live `/etc/zjunet-go/config.json` with placeholder
+credentials. Create it from the packaged example:
+
+```bash
+sudo install -m 600 /usr/share/doc/zjunet-go/config.example.json /etc/zjunet-go/config.json
+sudoedit /etc/zjunet-go/config.json
+```
+
 ## Configuration
 
 By default, `zjunet-go` reads `/etc/zjunet-go/config.json`.
@@ -118,25 +140,38 @@ MASQUERADE/FORWARD rules through the active PPP interface. Make sure your
 
 ## Systemd
 
-Example unit:
+When installed from a `.deb` or `.rpm`, the package provides
+`zjunet-go.service`. After creating `/etc/zjunet-go/config.json`, enable it with:
+
+```bash
+sudo systemctl enable --now zjunet-go.service
+sudo journalctl -u zjunet-go.service -f
+```
+
+For a manual install, copy the packaged unit into `/etc/systemd/system` and point
+`ExecStart` at your installed binary if needed:
 
 ```ini
 [Unit]
-Description=ZJU L2TP client
+Description=Zhejiang University Campus Network VPN client
+Documentation=https://github.com/w1ndy/zjunet-go
 After=network-online.target xl2tpd.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/zjunet-go start
+EnvironmentFile=-/etc/default/zjunet-go
+EnvironmentFile=-/etc/sysconfig/zjunet-go
+ExecStart=/usr/bin/zjunet-go start $ZJUNET_GO_ARGS
 Restart=always
 RestartSec=10s
+RuntimeDirectory=zjunet-go
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-After writing the unit:
+After writing a manual unit:
 
 ```bash
 sudo systemctl daemon-reload
@@ -149,9 +184,14 @@ sudo journalctl -u zjunet-go.service -f
 ```bash
 go test ./...
 go build -o zjunet-go ./cmd/zjunet-go
+goreleaser check
 ```
 
 Most package tests avoid touching the real host network by replacing command and
 filesystem hooks. Do not run `zjunet-go start` on a development machine unless
 you are ready for it to update `xl2tpd`, PPP, DNS, routes, and optional firewall
 state.
+
+Releases are built by GitHub Actions when a GitHub Release is published. The
+workflow runs tests, then uses GoReleaser to upload Linux binary archives,
+checksums, `.deb` packages, and `.rpm` packages to the release.

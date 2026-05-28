@@ -13,6 +13,8 @@ import (
 	"github.com/w1ndy/zjunet-go/pkg/daemon"
 )
 
+var Version = "0.1.0"
+
 func Run(args []string) error {
 	if len(args) == 0 {
 		Usage()
@@ -23,7 +25,7 @@ func Run(args []string) error {
 	case "start":
 		return cmdStart(args[1:])
 	case "version", "--version", "-v":
-		fmt.Println("zjunet-go 0.1.0")
+		fmt.Printf("zjunet-go %s\n", Version)
 		return nil
 	case "help", "-h", "--help":
 		Usage()

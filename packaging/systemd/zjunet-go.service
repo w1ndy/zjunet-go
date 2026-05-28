@@ -1,0 +1,17 @@
+[Unit]
+Description=Zhejiang University Campus Network VPN client
+Documentation=https://github.com/w1ndy/zjunet-go
+After=network-online.target xl2tpd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/zjunet-go
+EnvironmentFile=-/etc/sysconfig/zjunet-go
+ExecStart=/usr/bin/zjunet-go start $ZJUNET_GO_ARGS
+Restart=always
+RestartSec=10s
+RuntimeDirectory=zjunet-go
+
+[Install]
+WantedBy=multi-user.target
