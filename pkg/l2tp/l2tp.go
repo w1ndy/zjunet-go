@@ -18,6 +18,7 @@ import (
 const (
 	AppName       = "zjunet-go"
 	PPPPeerPath   = "/etc/ppp/peers/zjunet-go"
+	PPPDLogPath   = "/run/zjunet-go/pppd.log"
 	XL2TPDPath    = "/etc/xl2tpd/xl2tpd.conf"
 	ControlFile   = "/var/run/xl2tpd/l2tp-control"
 	ReadyStatus   = "ready"
@@ -25,17 +26,13 @@ const (
 )
 
 var (
+	pppdLogPath        = PPPDLogPath
 	sysClassNetPath    = "/sys/class/net"
-	pppdPIDDirs        = []string{"/var/run", "/run", "/var/run/pppd", "/run/pppd"}
-	netInterfaces      = net.Interfaces
-	netInterfaceByName = net.InterfaceByName
-	interfaceNetAddrs  = func(iface net.Interface) ([]net.Addr, error) {
-		return iface.Addrs()
-	}
 	probeOutputContext = system.OutputContext
 	knownPPPNetworks   = mustParseCIDRs(
 		"10.0.0.0/8",
 		"172.172.172.0/24",
+		"222.205.0.0/17",
 	)
 )
 
@@ -50,10 +47,11 @@ func WritePPPOptions(cfg config.Config) error {
 	}
 	body := fmt.Sprintf(`noauth
 linkname %s
+logfile %s
 name %s
 password %s
 mtu %d
-`, cfg.LACName, cfg.User, cfg.Password, cfg.MTU)
+`, cfg.LACName, pppdLogPath, cfg.User, cfg.Password, cfg.MTU)
 	return system.AtomicWrite(PPPPeerPath, []byte(body), 0600)
 }
 
@@ -162,6 +160,9 @@ func removeManagedBlocks(content string) (string, error) {
 }
 
 func Connect(ctx context.Context, lac string) error {
+	if err := resetPPPDLog(); err != nil {
+		return fmt.Errorf("reset pppd log %s: %w", pppdLogPath, err)
+	}
 	if err := controlLAC(ctx, "connect-lac", lac); err != nil {
 		return fmt.Errorf("connect LAC %q: %w", lac, err)
 	}
@@ -213,32 +214,20 @@ func pingWaitSeconds(timeout time.Duration) string {
 }
 
 func CurrentPPP(ctx context.Context, lac string) (string, []string, error) {
-	ifaces, err := netInterfaces()
+	_ = ctx
+	_ = lac
+	raw, err := os.ReadFile(pppdLogPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil, nil
+	}
 	if err != nil {
 		return "", nil, err
 	}
-
-	if pid, ok := readPPPDPID(pppdLinkPIDPaths(lac)); ok {
-		for _, iface := range ifaces {
-			if !isPPPInterface(iface.Name) || !interfacePIDMatches(iface.Name, pid) {
-				continue
-			}
-			if addrs, ok := addressedInterface(iface); ok {
-				return iface.Name, addrs, nil
-			}
-		}
+	dev, ip, ok := parsePPPDLog(raw)
+	if !ok {
 		return "", nil, nil
 	}
-
-	for _, iface := range ifaces {
-		if !isPPPInterface(iface.Name) {
-			continue
-		}
-		if addrs, ok := readyInterface(iface); ok {
-			return iface.Name, addrs, nil
-		}
-	}
-	return "", nil, nil
+	return dev, []string{ip + "/32"}, nil
 }
 
 func ReadInterfaceStats(dev string) (InterfaceStats, error) {
@@ -372,132 +361,120 @@ func cleanupRuntimeFiles() {
 	}
 }
 
-func readyInterfaceAddrs(dev string) ([]string, bool) {
-	iface, err := netInterfaceByName(dev)
-	if err != nil {
-		return nil, false
+func resetPPPDLog() error {
+	if err := os.MkdirAll(filepath.Dir(pppdLogPath), 0755); err != nil {
+		return err
 	}
-	return readyInterface(*iface)
-}
-
-func isPPPInterface(dev string) bool {
-	return strings.HasPrefix(dev, "ppp")
-}
-
-func pppdLinkPIDPaths(lac string) []string {
-	return pppdPIDPaths("ppp-" + lac + ".pid")
-}
-
-func pppdInterfacePIDPaths(dev string) []string {
-	return pppdPIDPaths(dev + ".pid")
-}
-
-func pppdPIDPaths(name string) []string {
-	paths := make([]string, 0, len(pppdPIDDirs))
-	for _, dir := range pppdPIDDirs {
-		paths = append(paths, filepath.Join(dir, name))
+	if err := os.Remove(pppdLogPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
-	return paths
+	return os.WriteFile(pppdLogPath, nil, 0600)
 }
 
-func interfacePIDMatches(dev string, pid int) bool {
-	interfacePID, ok := readPPPDPID(pppdInterfacePIDPaths(dev))
-	return ok && interfacePID == pid
+func isPPPDeviceName(dev string) bool {
+	if !strings.HasPrefix(dev, "ppp") || len(dev) == len("ppp") {
+		return false
+	}
+	for _, r := range dev[len("ppp"):] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
-func readPPPDPID(paths []string) (int, bool) {
-	for _, path := range paths {
-		raw, err := os.ReadFile(path)
-		if err != nil {
+func parsePPPDLog(raw []byte) (string, string, bool) {
+	var dev, localIP string
+	active := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		msg := strings.TrimSpace(line)
+		if msg == "" {
 			continue
 		}
-		pid, ok := parsePIDFile(raw)
-		if ok {
-			return pid, true
-		}
-	}
-	return 0, false
-}
-
-func parsePIDFile(raw []byte) (int, bool) {
-	fields := strings.Fields(string(raw))
-	if len(fields) == 0 {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(fields[0])
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
-	return pid, true
-}
-
-func readyInterface(iface net.Interface) ([]string, bool) {
-	addrs, ok := addressedInterface(iface)
-	if !ok {
-		return nil, false
-	}
-	raw, err := interfaceNetAddrs(iface)
-	if err != nil || !containsKnownPPPAddress(raw) {
-		return nil, false
-	}
-	return addrs, true
-}
-
-func addressedInterface(iface net.Interface) ([]string, bool) {
-	if iface.Flags&net.FlagUp == 0 {
-		return nil, false
-	}
-	raw, err := interfaceNetAddrs(iface)
-	if err != nil || len(raw) == 0 || !containsIPAddress(raw) {
-		return nil, false
-	}
-	return stringifyAddrs(raw), true
-}
-
-func stringifyAddrs(raw []net.Addr) []string {
-	addrs := make([]string, 0, len(raw))
-	for _, addr := range raw {
-		addrs = append(addrs, addr.String())
-	}
-	return addrs
-}
-
-func containsKnownPPPAddress(addrs []net.Addr) bool {
-	for _, addr := range addrs {
-		ip := addrIP(addr)
-		if ip == nil {
+		if isPPPDStartLine(msg) {
+			dev = ""
+			localIP = ""
+			active = true
 			continue
 		}
-		for _, network := range knownPPPNetworks {
-			if network.Contains(ip) {
-				return true
+		if parsedDev, ok := parsePPPDInterfaceLine(msg); ok {
+			dev = parsedDev
+			active = true
+		}
+		if parsedIP, ok := parsePPPDLocalIPLine(msg); ok {
+			localIP = parsedIP
+			active = true
+		}
+		if isPPPDTerminalLine(msg) {
+			dev = ""
+			localIP = ""
+			active = false
+		}
+	}
+	if !active || dev == "" || localIP == "" || !knownPPPIP(localIP) {
+		return "", "", false
+	}
+	return dev, localIP, true
+}
+
+func isPPPDStartLine(line string) bool {
+	return strings.Contains(line, "pppd ") && strings.Contains(line, " started ")
+}
+
+func parsePPPDInterfaceLine(line string) (string, bool) {
+	const marker = "Using interface "
+	idx := strings.Index(line, marker)
+	if idx < 0 {
+		return "", false
+	}
+	fields := strings.Fields(line[idx+len(marker):])
+	if len(fields) == 0 || !isPPPDeviceName(fields[0]) {
+		return "", false
+	}
+	return fields[0], true
+}
+
+func parsePPPDLocalIPLine(line string) (string, bool) {
+	fields := strings.Fields(line)
+	for i := 0; i+3 < len(fields); i++ {
+		if fields[i] == "local" && fields[i+1] == "IP" && fields[i+2] == "address" {
+			ip := net.ParseIP(fields[i+3])
+			if ip == nil || ip.To4() == nil {
+				return "", false
 			}
+			return fields[i+3], true
 		}
 	}
-	return false
+	return "", false
 }
 
-func containsIPAddress(addrs []net.Addr) bool {
-	for _, addr := range addrs {
-		if addrIP(addr) != nil {
+func isPPPDTerminalLine(line string) bool {
+	terminalMarkers := []string{
+		"Terminating on signal",
+		"Connection terminated",
+		"Modem hangup",
+		"Exit.",
+		"LCP terminated",
+	}
+	for _, marker := range terminalMarkers {
+		if strings.Contains(line, marker) {
 			return true
 		}
 	}
 	return false
 }
 
-func addrIP(addr net.Addr) net.IP {
-	switch v := addr.(type) {
-	case *net.IPNet:
-		return v.IP
-	case *net.IPAddr:
-		return v.IP
+func knownPPPIP(raw string) bool {
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return false
 	}
-	ip, _, err := net.ParseCIDR(addr.String())
-	if err == nil {
-		return ip
+	for _, network := range knownPPPNetworks {
+		if network.Contains(ip) {
+			return true
+		}
 	}
-	return net.ParseIP(addr.String())
+	return false
 }
 
 func mustParseCIDRs(cidrs ...string) []*net.IPNet {

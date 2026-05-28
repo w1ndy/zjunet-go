@@ -119,6 +119,7 @@ Generated and runtime-managed paths:
 
 - `/etc/ppp/peers/zjunet-go`
 - `/etc/xl2tpd/xl2tpd.conf`
+- `/run/zjunet-go/pppd.log`
 - `/run/zjunet-go/state.json`
 
 `zjunet-go` inserts a managed LAC block into `xl2tpd.conf` and rewrites only its
