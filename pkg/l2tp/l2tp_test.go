@@ -261,6 +261,43 @@ func TestCurrentPPPUsesLinkPIDToSelectInterface(t *testing.T) {
 	}
 }
 
+func TestCurrentPPPAllowsAnyAddressWhenLinkPIDMatches(t *testing.T) {
+	oldPIDDirs := pppdPIDDirs
+	oldNetInterfaces := netInterfaces
+	oldInterfaceNetAddrs := interfaceNetAddrs
+	t.Cleanup(func() {
+		pppdPIDDirs = oldPIDDirs
+		netInterfaces = oldNetInterfaces
+		interfaceNetAddrs = oldInterfaceNetAddrs
+	})
+
+	pppdPIDDirs = []string{t.TempDir()}
+	if err := os.WriteFile(filepath.Join(pppdPIDDirs[0], "ppp-zjunet-go.pid"), []byte("1234 ppp0\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pppdPIDDirs[0], "ppp0.pid"), []byte("1234\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	netInterfaces = func() ([]net.Interface, error) {
+		return []net.Interface{{Name: "ppp0", Flags: net.FlagUp}}, nil
+	}
+	interfaceNetAddrs = func(net.Interface) ([]net.Addr, error) {
+		return []net.Addr{stringAddr("222.205.1.205/32")}, nil
+	}
+
+	dev, addrs, err := CurrentPPP(context.Background(), "zjunet-go")
+	if err != nil {
+		t.Fatalf("CurrentPPP() error = %v", err)
+	}
+	if dev != "ppp0" {
+		t.Fatalf("CurrentPPP() dev = %q, want ppp0", dev)
+	}
+	if len(addrs) != 1 || addrs[0] != "222.205.1.205/32" {
+		t.Fatalf("CurrentPPP() addrs = %#v, want 222.205.1.205/32", addrs)
+	}
+}
+
 func TestCurrentPPPFallsBackWhenLinkPIDIsMissing(t *testing.T) {
 	oldPIDDirs := pppdPIDDirs
 	oldNetInterfaces := netInterfaces

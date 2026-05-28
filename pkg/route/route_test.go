@@ -51,6 +51,37 @@ func TestRouteOutputHasDeviceUsesExactFieldMatch(t *testing.T) {
 	}
 }
 
+func TestSetupNATCapturesSysctlOutput(t *testing.T) {
+	oldOutputContext := outputContext
+	t.Cleanup(func() {
+		outputContext = oldOutputContext
+	})
+
+	var calls []string
+	outputContext = func(_ context.Context, name string, args ...string) (string, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		switch name {
+		case "sysctl":
+			return "net.ipv4.ip_forward = 1\n", nil
+		case iptablesBinary:
+			return "", nil
+		default:
+			t.Fatalf("unexpected command %q", name)
+		}
+		return "", nil
+	}
+
+	cfg := config.Default()
+	cfg.ManageNAT = true
+	if err := SetupNAT(context.Background(), cfg, "ppp1"); err != nil {
+		t.Fatalf("SetupNAT() error = %v", err)
+	}
+	if len(calls) == 0 || calls[0] != "sysctl -w net.ipv4.ip_forward=1" {
+		t.Fatalf("first command = %#v, want sysctl probe first", calls)
+	}
+}
+
 func TestHealthyUsesExactRouteFields(t *testing.T) {
 	oldOutputContext := outputContext
 	t.Cleanup(func() {

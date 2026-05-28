@@ -76,7 +76,7 @@ func SetupNAT(ctx context.Context, cfg config.Config, ppp string) error {
 	if !cfg.ManageNAT {
 		return nil
 	}
-	if err := system.RunContext(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
+	if _, err := outputContext(ctx, "sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
 		return err
 	}
 	if err := ensureRule(ctx, "-t", "nat", "-A", "POSTROUTING", "-o", ppp, "-j", "MASQUERADE"); err != nil {

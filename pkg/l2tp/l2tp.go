@@ -223,7 +223,7 @@ func CurrentPPP(ctx context.Context, lac string) (string, []string, error) {
 			if !isPPPInterface(iface.Name) || !interfacePIDMatches(iface.Name, pid) {
 				continue
 			}
-			if addrs, ok := readyInterface(iface); ok {
+			if addrs, ok := addressedInterface(iface); ok {
 				return iface.Name, addrs, nil
 			}
 		}
@@ -432,11 +432,23 @@ func parsePIDFile(raw []byte) (int, bool) {
 }
 
 func readyInterface(iface net.Interface) ([]string, bool) {
+	addrs, ok := addressedInterface(iface)
+	if !ok {
+		return nil, false
+	}
+	raw, err := interfaceNetAddrs(iface)
+	if err != nil || !containsKnownPPPAddress(raw) {
+		return nil, false
+	}
+	return addrs, true
+}
+
+func addressedInterface(iface net.Interface) ([]string, bool) {
 	if iface.Flags&net.FlagUp == 0 {
 		return nil, false
 	}
 	raw, err := interfaceNetAddrs(iface)
-	if err != nil || len(raw) == 0 || !containsKnownPPPAddress(raw) {
+	if err != nil || len(raw) == 0 || !containsIPAddress(raw) {
 		return nil, false
 	}
 	return stringifyAddrs(raw), true
@@ -460,6 +472,15 @@ func containsKnownPPPAddress(addrs []net.Addr) bool {
 			if network.Contains(ip) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func containsIPAddress(addrs []net.Addr) bool {
+	for _, addr := range addrs {
+		if addrIP(addr) != nil {
+			return true
 		}
 	}
 	return false

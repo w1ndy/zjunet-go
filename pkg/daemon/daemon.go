@@ -86,7 +86,7 @@ func Run(ctx context.Context, opts Options) error {
 	rt := runtimeState{route: state, needDial: true}
 
 	if err := reconcile(ctx, cfg, &rt, opts); err != nil {
-		return err
+		log.Printf("initial reconcile failed: %v", err)
 	}
 
 	ticker := time.NewTicker(opts.Interval)
@@ -214,6 +214,7 @@ func reconnect(ctx context.Context, cfg config.Config, rt *runtimeState, opts Op
 	if err := l2tp.Connect(ctx, cfg.LACName); err != nil {
 		return fmt.Errorf("connect lac: %w", err)
 	}
+	rt.needDial = false
 	log.Printf("waiting up to %s for PPP interface", opts.Wait)
 	ppp, addrs, err := l2tp.WaitPPP(ctx, cfg.LACName, opts.Wait)
 	if err != nil {
