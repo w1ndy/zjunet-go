@@ -6,6 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=ZJUNET_GO_ARGS=
 EnvironmentFile=-/etc/default/zjunet-go
 EnvironmentFile=-/etc/sysconfig/zjunet-go
 ExecStart=/usr/bin/zjunet-go start $ZJUNET_GO_ARGS

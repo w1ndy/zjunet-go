@@ -45,7 +45,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	deps := []string{"xl2tpd", "xl2tpd-control", "ip", "pgrep", "pkill", "systemctl"}
+	deps := []string{"xl2tpd", "xl2tpd-control", "ip", "ping", "pgrep", "pkill", "systemctl"}
 	if cfg.ManageNAT {
 		deps = append(deps, "iptables", "sysctl")
 	}

@@ -2,10 +2,13 @@ package l2tp
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 type stringAddr string
@@ -150,6 +153,44 @@ func TestReadyInterfaceRequiresPPPNetwork(t *testing.T) {
 	}
 	if len(addrs) != 1 || addrs[0] != "10.5.1.23/32" {
 		t.Fatalf("readyInterface() addrs = %#v, want 10.5.1.23/32", addrs)
+	}
+}
+
+func TestReachableUsesPingProbe(t *testing.T) {
+	oldProbeOutputContext := probeOutputContext
+	t.Cleanup(func() {
+		probeOutputContext = oldProbeOutputContext
+	})
+
+	probeOutputContext = func(ctx context.Context, name string, args ...string) (string, error) {
+		if name != "ping" {
+			t.Fatalf("probe command = %q, want ping", name)
+		}
+		got := strings.Join(args, " ")
+		want := "-n -c 1 -W 2 10.5.1.9"
+		if got != want {
+			t.Fatalf("probe args = %q, want %q", got, want)
+		}
+		return "", nil
+	}
+
+	if !Reachable(context.Background(), "10.5.1.9", 1500*time.Millisecond) {
+		t.Fatal("Reachable() = false, want true")
+	}
+}
+
+func TestReachableReturnsFalseWhenPingFails(t *testing.T) {
+	oldProbeOutputContext := probeOutputContext
+	t.Cleanup(func() {
+		probeOutputContext = oldProbeOutputContext
+	})
+
+	probeOutputContext = func(context.Context, string, ...string) (string, error) {
+		return "", errors.New("no reply")
+	}
+
+	if Reachable(context.Background(), "10.5.1.9", 2*time.Second) {
+		t.Fatal("Reachable() = true, want false")
 	}
 }
 

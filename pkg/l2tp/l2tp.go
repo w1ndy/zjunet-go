@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/w1ndy/zjunet-go/pkg/config"
@@ -33,7 +32,8 @@ var (
 	interfaceNetAddrs  = func(iface net.Interface) ([]net.Addr, error) {
 		return iface.Addrs()
 	}
-	knownPPPNetworks = mustParseCIDRs(
+	probeOutputContext = system.OutputContext
+	knownPPPNetworks   = mustParseCIDRs(
 		"10.0.0.0/8",
 		"172.172.172.0/24",
 	)
@@ -197,12 +197,19 @@ func Reachable(ctx context.Context, host string, timeout time.Duration) bool {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := (&net.Dialer{Timeout: timeout}).DialContext(probeCtx, "tcp", net.JoinHostPort(host, "1701"))
-	if err == nil {
-		_ = conn.Close()
-		return true
+	_, err := probeOutputContext(probeCtx, "ping", "-n", "-c", "1", "-W", pingWaitSeconds(timeout), host)
+	return err == nil
+}
+
+func pingWaitSeconds(timeout time.Duration) string {
+	seconds := int(timeout / time.Second)
+	if timeout%time.Second != 0 {
+		seconds++
 	}
-	return errors.Is(err, syscall.ECONNREFUSED)
+	if seconds < 1 {
+		seconds = 1
+	}
+	return strconv.Itoa(seconds)
 }
 
 func CurrentPPP(ctx context.Context, lac string) (string, []string, error) {

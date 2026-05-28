@@ -87,6 +87,7 @@ nfpms:
           - xl2tpd
           - ppp
           - iproute2
+          - iputils-ping
           - procps
           - systemd
           - iptables
@@ -95,6 +96,7 @@ nfpms:
           - xl2tpd
           - ppp
           - iproute
+          - iputils
           - procps-ng
           - systemd
           - iptables

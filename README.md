@@ -27,6 +27,7 @@ not include WLAN login, interactive prompts, or multi-user load balancing.
 - `pppd`
 - `xl2tpd-control`
 - `iproute2`
+- `ping` from `iputils`
 - `procps` tools such as `pgrep` and `pkill`
 - `iptables` and `sysctl` when `manage_nat` is enabled
 
@@ -55,7 +56,7 @@ install:
 
 Package metadata declares the runtime dependencies needed by the daemon,
 including `xl2tpd`, `ppp`, `iproute2`/`iproute`, `procps`/`procps-ng`,
-`systemd`, and `iptables`.
+`iputils-ping`/`iputils`, `systemd`, and `iptables`.
 
 The package does not install a live `/etc/zjunet-go/config.json` with placeholder
 credentials. Create it from the packaged example:
@@ -160,6 +161,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+Environment=ZJUNET_GO_ARGS=
 EnvironmentFile=-/etc/default/zjunet-go
 EnvironmentFile=-/etc/sysconfig/zjunet-go
 ExecStart=/usr/bin/zjunet-go start $ZJUNET_GO_ARGS
