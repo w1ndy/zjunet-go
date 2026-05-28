@@ -1,0 +1,10 @@
+# Build outputs
+/zjunet-go
+*.test
+
+# Test and coverage artifacts
+coverage.out
+*.coverprofile
+
+# Local configuration with credentials
+config.json

@@ -1,0 +1,11 @@
+{
+  "user": "YOUR_NETID",
+  "password": "YOUR_PASSWORD",
+  "lns": "10.5.1.9",
+  "lac_name": "zjunet-go",
+  "mtu": 1428,
+  "dns": ["10.10.0.21"],
+  "manage_dns": false,
+  "manage_route": true,
+  "manage_nat": false
+}
